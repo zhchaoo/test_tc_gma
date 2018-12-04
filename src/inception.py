@@ -9,11 +9,13 @@ import matplotlib.pyplot as plt
 import os
 import random
 import tensorflow as tf
-from sklearn.metrics import classification_report
 
+from sklearn.metrics import classification_report
 from tensorflow import keras
 from sklearn.preprocessing import OneHotEncoder
 from datetime import datetime
+
+from src.model.inception_model import check_print
 
 FLAGS = None
 random.seed(42)
@@ -103,20 +105,7 @@ def train_model():
     train_label = []
 
     # define net
-    model = keras.Sequential([
-        keras.layers.Conv2D(32, kernel_size=(3, 3), activation=tf.nn.relu, input_shape=[32, 32, 18]),
-        keras.layers.Conv2D(64, kernel_size=(3, 3), activation=tf.nn.relu),
-        keras.layers.MaxPooling2D(pool_size=(2, 2)),
-        keras.layers.Dropout(0.2),
-        keras.layers.Flatten(),
-        keras.layers.Dense(128, activation=tf.nn.relu),
-        keras.layers.Dropout(0.2),
-        keras.layers.Dense(17, activation=tf.nn.softmax)
-    ])
-
-    model.compile(optimizer=tf.train.AdamOptimizer(),
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
+    model = check_print()
 
     model.summary()
     # train_y = train_label
@@ -143,9 +132,10 @@ def train_model():
     # train_s2_batch = train_s2.reshape((cur_batch_size, -1))
     # train_X_batch = np.hstack([train_s1_batch, train_s2_batch])
     train_X_batch = np.concatenate((train_s1, train_s2), axis=3)
-    label_batch = np.argmax(train_label, axis=1)
+    # label_batch = np.argmax(train_label, axis=1)
+    label_batch = np.array(train_label)
     model.fit(train_X_batch, label_batch, epochs=FLAGS.epochs)
-    model.save('model/cnn_%s.h5' %date_time.strftime('%y%m%d_%H%M'))
+    model.save('model/icpt_%s.h5' %date_time.strftime('%y%m%d_%H%M'))
     return model
 
 
@@ -159,6 +149,7 @@ def validate_model(model):
     # val_X_batch = np.hstack([val_s1_batch, val_s2_batch])
     val_X_batch = np.concatenate((val_s1_batch, val_s2_batch), axis=3)
     label_batch = np.argmax(label_validation, axis=1)
+    # label_batch = np.array(label_validation)
 
     val_loss, val_acc = model.evaluate(val_X_batch, label_batch)
     print "loss:%f accuracy:%f" % (val_loss, val_acc)
@@ -166,7 +157,7 @@ def validate_model(model):
     pred_y = model.predict(val_X_batch)
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)
-    print classification_report(label_batch, pred_y)
+    print classification_report(np.argmax(label_validation, axis=1), pred_y)
 
 
 def predict_result(model):
@@ -186,7 +177,7 @@ def predict_result(model):
     enc.fit(np.arange(0, 17)[:, np.newaxis])
     ret = enc.transform(pred_y[:, np.newaxis])
     ret_df = pd.DataFrame(ret.toarray()).astype(int)
-    ret_df.to_csv('result/cnn_%s.csv' %date_time.strftime('%y%m%d_%H%M'),
+    ret_df.to_csv('result/icpt_%s.csv' %date_time.strftime('%y%m%d_%H%M'),
                   index=False, header=False)
 
 
