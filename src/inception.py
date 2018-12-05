@@ -97,44 +97,35 @@ def load_model(model_path):
     return model
 
 
-def train_model():
+def train_data_generator():
     # simple classification example
     # Training part
-    train_s1 = []
-    train_s2 = []
-    train_label = []
+    n_sampels = s1_training.shape[0]
+    train_y = np.argmax(label_training, axis=1)
+    while True:
+        # random in n_sampels
+        for i in range(0, n_sampels, FLAGS.batch_size):
+            # this is an idea for random training
+            # you can relpace this loop for deep learning methods
+            start_pos = i
+            end_pos = min(i + FLAGS.batch_size, n_sampels)
+            train_s1_tmp = np.asarray(s1_training[start_pos:end_pos, :, :, :])
+            train_s2_tmp = np.asarray(s2_training[start_pos:end_pos, :, :, :])
+            train_X_batch = np.concatenate((train_s1_tmp, train_s2_tmp), axis=3)
+            train_label = train_y[start_pos:end_pos]
+            yield (train_X_batch, train_label)
+            print "%s generate data [%d:%d]" % (datetime.now(), start_pos, end_pos)
 
+
+def train_model():
     # define net
     model = check_print()
 
-    model.summary()
-    # train_y = train_label
-    batch_size = FLAGS.batch_size
+    # model.summary()
     n_sampels = s1_training.shape[0]
 
-    # random in n_sampels
-    for i in range(0, n_sampels):
-        # this is an idea for random training
-        # you can relpace this loop for deep learning methods
-        if random.random() > float(batch_size) / n_sampels:
-            continue
-        train_s1_tmp = np.asarray(s1_training[i, :, :, :])
-        train_s2_tmp = np.asarray(s2_training[i, :, :, :])
-        train_s1.append(train_s1_tmp)
-        train_s2.append(train_s2_tmp)
-        train_label.append(label_training[i])
-    print "train data prepared!"
-
-    train_s1 = np.array(train_s1)
-    train_s2 = np.array(train_s2)
-    # cur_batch_size = train_s2.shape[0]
-    # train_s1_batch = train_s1.reshape((cur_batch_size, -1))
-    # train_s2_batch = train_s2.reshape((cur_batch_size, -1))
-    # train_X_batch = np.hstack([train_s1_batch, train_s2_batch])
-    train_X_batch = np.concatenate((train_s1, train_s2), axis=3)
-    # label_batch = np.argmax(train_label, axis=1)
-    label_batch = np.array(train_label)
-    model.fit(train_X_batch, label_batch, epochs=FLAGS.epochs)
+    model.fit_generator(train_data_generator(), epochs=FLAGS.epochs,
+                        steps_per_epoch=n_sampels / FLAGS.batch_size, verbose=2, workers=1)
     model.save('model/icpt_%s.h5' %date_time.strftime('%y%m%d_%H%M'))
     return model
 
@@ -149,7 +140,6 @@ def validate_model(model):
     # val_X_batch = np.hstack([val_s1_batch, val_s2_batch])
     val_X_batch = np.concatenate((val_s1_batch, val_s2_batch), axis=3)
     label_batch = np.argmax(label_validation, axis=1)
-    # label_batch = np.array(label_validation)
 
     val_loss, val_acc = model.evaluate(val_X_batch, label_batch)
     print "loss:%f accuracy:%f" % (val_loss, val_acc)
@@ -184,8 +174,8 @@ def predict_result(model):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', type=str, help='load last model from path')
-    parser.add_argument('--batch_size', type=int, default=100000, help='train batch size')
-    parser.add_argument('--epochs', type=int, default=5, help='epoch times')
+    parser.add_argument('--batch_size', type=int, default=100, help='train batch size')
+    parser.add_argument('--epochs', type=int, default=10, help='epoch times')
     FLAGS = parser.parse_args()
 
     if FLAGS.model_path:
