@@ -2,173 +2,166 @@
 # coding: utf-8
 
 import argparse
-import h5py
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import os
-import random
-import tensorflow as tf
 
-from sklearn.metrics import classification_report
-from tensorflow import keras
-from sklearn.preprocessing import OneHotEncoder
-from datetime import datetime
+from utils import *
+from keras import regularizers
+from keras.layers import Conv2D, MaxPooling2D, AveragePooling2D
+from keras.layers import Flatten, Dense, Dropout, BatchNormalization
+from keras.layers import Input, concatenate
+from keras.models import Model
 
-from src.model.inception_model import check_print
-
-FLAGS = None
-random.seed(42)
-# to change according to your machine
-base_dir = os.path.expanduser("data/tum")
-path_training = os.path.join(base_dir, 'training.h5')
-path_validation = os.path.join(base_dir, 'validation.h5')
-path_test = os.path.join(base_dir, 'round1_test_a_20181109.h5')
-if not os.path.exists('result'):
-    os.mkdir('result')
-if not os.path.exists('model'):
-    os.mkdir('model')
-
-fid_training = h5py.File(path_training, 'r')
-fid_validation = h5py.File(path_validation, 'r')
-fid_test = h5py.File(path_test, 'r')
-
-# we can have a look at which keys are stored in the file
-# you will get the return [u'label', u'sen1', u'sen2']
-# sen1 and sen2 means the satellite images
-print fid_training.keys()
-print fid_validation.keys()
-print fid_test.keys()
-
-# get s1 image channel data
-# it is not really loaded into memory. only the indexes have been loaded.
-print "-" * 60
-print "training part"
-s1_training = fid_training['sen1']
-print s1_training.shape
-s2_training = fid_training['sen2']
-print s2_training.shape
-label_training = fid_training['label']
-print label_training.shape
-
-print "-" * 60
-print "validation part"
-s1_validation = fid_validation['sen1']
-print s1_validation.shape
-s2_validation = fid_validation['sen2']
-print s2_validation.shape
-label_validation = fid_validation['label']
-print label_validation.shape
-
-print "-" * 60
-print "test part"
-s1_test = fid_test['sen1']
-print s1_test.shape
-s2_test = fid_test['sen2']
-print s2_test.shape
-
-# compute the quantity for each col
-label_qty = np.sum(label_training, axis=0)
-
-# visualization, plot the first pair of Sentinel-1 and Sentinel-2 patches of training.h5
-plt.subplot(212)
-plt.plot(label_qty)
-
-plt.subplot(221)
-plt.imshow(np.log10(s1_training[0, :, :, 4]), cmap=plt.cm.get_cmap('gray'))
-plt.colorbar()
-plt.title('Sentinel-1')
-
-plt.subplot(222)
-plt.imshow(s2_training[0, :, :, 1], cmap=plt.cm.get_cmap('gray'))
-plt.colorbar()
-plt.title('Sentinel-2')
-# plt.show()
-
-date_time = datetime.now()
+# Global Constants
+NB_CLASS = 17
+LEARNING_RATE = 0.01
+MOMENTUM = 0.9
+ALPHA = 0.0001
+BETA = 0.75
+GAMMA = 0.1
+DROPOUT = 0.4
+WEIGHT_DECAY = 0.0005
+LRN2D_NORM = True
+DATA_FORMAT = 'channels_last'  # Theano:'channels_first' Tensorflow:'channels_last'
+USE_BN = True
 
 
-def load_model(model_path):
-    model = keras.models.load_model(model_path)
-    model.compile(optimizer=tf.train.AdamOptimizer(),
+# normalization
+def conv2D_lrn2d(x, filters, kernel_size, strides=(1, 1), padding='same', data_format=DATA_FORMAT, dilation_rate=(1, 1),
+                 activation='relu', use_bias=True, kernel_initializer='glorot_uniform', bias_initializer='zeros',
+                 kernel_regularizer=None, bias_regularizer=None, activity_regularizer=None, kernel_constraint=None,
+                 bias_constraint=None, lrn2d_norm=LRN2D_NORM, weight_decay=WEIGHT_DECAY):
+    # l2 normalization
+    if weight_decay:
+        kernel_regularizer = regularizers.l2(weight_decay)
+        bias_regularizer = regularizers.l2(weight_decay)
+    else:
+        kernel_regularizer = None
+        bias_regularizer = None
+
+    x = Conv2D(filters=filters, kernel_size=kernel_size, strides=strides, padding=padding, data_format=data_format,
+               dilation_rate=dilation_rate, activation=activation, use_bias=use_bias,
+               kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
+               kernel_regularizer=kernel_regularizer, bias_regularizer=bias_regularizer,
+               activity_regularizer=activity_regularizer, kernel_constraint=kernel_constraint,
+               bias_constraint=bias_constraint)(x)
+
+    if lrn2d_norm:
+        # batch normalization
+        x = BatchNormalization()(x)
+
+    return x
+
+
+def inception_module(x, params, concat_axis, padding='same', data_format=DATA_FORMAT, dilation_rate=(1, 1),
+                     activation='relu', use_bias=True, kernel_initializer='glorot_uniform', bias_initializer='zeros',
+                     kernel_regularizer=None, bias_regularizer=None, activity_regularizer=None, kernel_constraint=None,
+                     bias_constraint=None, lrn2d_norm=LRN2D_NORM, weight_decay=None):
+    (branch1, branch2, branch3, branch4) = params
+    if weight_decay:
+        kernel_regularizer = regularizers.l2(weight_decay)
+        bias_regularizer = regularizers.l2(weight_decay)
+    else:
+        kernel_regularizer = None
+        bias_regularizer = None
+    # 1x1
+    pathway1 = Conv2D(filters=branch1[0], kernel_size=(1, 1), strides=1, padding=padding, data_format=data_format,
+                      dilation_rate=dilation_rate, activation=activation, use_bias=use_bias,
+                      kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
+                      kernel_regularizer=kernel_regularizer, bias_regularizer=bias_regularizer,
+                      activity_regularizer=activity_regularizer, kernel_constraint=kernel_constraint,
+                      bias_constraint=bias_constraint)(x)
+
+    # 1x1->3x3
+    pathway2 = Conv2D(filters=branch2[0], kernel_size=(1, 1), strides=1, padding=padding, data_format=data_format,
+                      dilation_rate=dilation_rate, activation=activation, use_bias=use_bias,
+                      kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
+                      kernel_regularizer=kernel_regularizer, bias_regularizer=bias_regularizer,
+                      activity_regularizer=activity_regularizer, kernel_constraint=kernel_constraint,
+                      bias_constraint=bias_constraint)(x)
+    pathway2 = Conv2D(filters=branch2[1], kernel_size=(3, 3), strides=1, padding=padding, data_format=data_format,
+                      dilation_rate=dilation_rate, activation=activation, use_bias=use_bias,
+                      kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
+                      kernel_regularizer=kernel_regularizer, bias_regularizer=bias_regularizer,
+                      activity_regularizer=activity_regularizer, kernel_constraint=kernel_constraint,
+                      bias_constraint=bias_constraint)(pathway2)
+
+    # 1x1->5x5
+    # pathway3=Conv2D(filters=branch3[0],kernel_size=(1,1),strides=1,padding=padding,data_format=data_format,dilation_rate=dilation_rate,activation=activation,use_bias=use_bias,kernel_initializer=kernel_initializer,bias_initializer=bias_initializer,kernel_regularizer=kernel_regularizer,bias_regularizer=bias_regularizer,activity_regularizer=activity_regularizer,kernel_constraint=kernel_constraint,bias_constraint=bias_constraint)(x)
+    # pathway3=Conv2D(filters=branch3[1],kernel_size=(5,5),strides=1,padding=padding,data_format=data_format,dilation_rate=dilation_rate,activation=activation,use_bias=use_bias,kernel_initializer=kernel_initializer,bias_initializer=bias_initializer,kernel_regularizer=kernel_regularizer,bias_regularizer=bias_regularizer,activity_regularizer=activity_regularizer,kernel_constraint=kernel_constraint,bias_constraint=bias_constraint)(pathway3)
+
+    # 3x3->1x1
+    pathway4 = MaxPooling2D(pool_size=(3, 3), strides=1, padding=padding, data_format=DATA_FORMAT)(x)
+    pathway4 = Conv2D(filters=branch4[0], kernel_size=(1, 1), strides=1, padding=padding, data_format=data_format,
+                      dilation_rate=dilation_rate, activation=activation, use_bias=use_bias,
+                      kernel_initializer=kernel_initializer, bias_initializer=bias_initializer,
+                      kernel_regularizer=kernel_regularizer, bias_regularizer=bias_regularizer,
+                      activity_regularizer=activity_regularizer, kernel_constraint=kernel_constraint,
+                      bias_constraint=bias_constraint)(pathway4)
+
+    # return concatenate([pathway1,pathway2,pathway3,pathway4],axis=concat_axis)
+    return concatenate([pathway1, pathway2, pathway4], axis=concat_axis)
+
+
+def create_model_inteval():
+    # Data format:tensorflow,channels_last;theano,channels_last
+    if DATA_FORMAT == 'channels_first':
+        INP_SHAPE = (18, 32, 32)
+        img_input = Input(shape=INP_SHAPE)
+        CONCAT_AXIS = 1
+    elif DATA_FORMAT == 'channels_last':
+        INP_SHAPE = (32, 32, 18)
+        img_input = Input(shape=INP_SHAPE)
+        CONCAT_AXIS = 3
+    else:
+        raise Exception('Invalid Dim Ordering')
+
+    x = conv2D_lrn2d(img_input, 64, (5, 5), 1, padding='same', lrn2d_norm=False)
+    x = MaxPooling2D(pool_size=(2, 2), strides=2, padding='same', data_format=DATA_FORMAT)(x)
+    x = BatchNormalization()(x)
+
+    x = conv2D_lrn2d(x, 64, (1, 1), 1, padding='same', lrn2d_norm=False)
+
+    x = conv2D_lrn2d(x, 192, (3, 3), 1, padding='same', lrn2d_norm=True)
+    x = MaxPooling2D(pool_size=(2, 2), strides=2, padding='same', data_format=DATA_FORMAT)(x)
+
+    x = inception_module(x, params=[(64,), (96, 128), (16, 32), (32,)], concat_axis=CONCAT_AXIS)  # 3a
+    x = inception_module(x, params=[(128,), (128, 192), (32, 96), (64,)], concat_axis=CONCAT_AXIS)  # 3b
+    x = MaxPooling2D(pool_size=(2, 2), strides=2, padding='same', data_format=DATA_FORMAT)(x)
+
+    x = inception_module(x, params=[(192,), (96, 208), (16, 48), (64,)], concat_axis=CONCAT_AXIS)  # 4a
+    x = inception_module(x, params=[(160,), (112, 224), (24, 64), (64,)], concat_axis=CONCAT_AXIS)  # 4b
+    x = inception_module(x, params=[(128,), (128, 256), (24, 64), (64,)], concat_axis=CONCAT_AXIS)  # 4c
+    x = inception_module(x, params=[(112,), (144, 288), (32, 64), (64,)], concat_axis=CONCAT_AXIS)  # 4d
+    x = inception_module(x, params=[(256,), (160, 320), (32, 128), (128,)], concat_axis=CONCAT_AXIS)  # 4e
+    x = MaxPooling2D(pool_size=(2, 2), strides=2, padding='same', data_format=DATA_FORMAT)(x)
+
+    x = inception_module(x, params=[(256,), (160, 320), (32, 128), (128,)], concat_axis=CONCAT_AXIS)  # 5a
+    x = inception_module(x, params=[(384,), (192, 384), (48, 128), (128,)], concat_axis=CONCAT_AXIS)  # 5b
+    x = AveragePooling2D(pool_size=(2, 2), strides=1, padding='valid', data_format=DATA_FORMAT)(x)
+
+    x = Flatten()(x)
+    x = Dropout(DROPOUT)(x)
+    x = Dense(units=NB_CLASS, activation='linear')(x)
+    x = Dense(units=NB_CLASS, activation='softmax')(x)
+
+    return x, img_input, CONCAT_AXIS, INP_SHAPE, DATA_FORMAT
+
+
+def create_model():
+    # Create the Model
+    x, img_input, CONCAT_AXIS, INP_SHAPE, DATA_FORMAT = create_model_inteval()
+
+    # Create a Keras Model
+    model = Model(inputs=img_input, outputs=[x])
+    model.summary()
+
+    # Save a PNG of the Model Build
+    # plot_model(model,to_file='GoogLeNet.png')
+
+    model.compile(optimizer='adam',
                   loss='sparse_categorical_crossentropy',
                   metrics=['accuracy'])
-    model.summary()
+    print 'Model Compiled'
     return model
-
-
-def train_data_generator():
-    # simple classification example
-    # Training part
-    n_sampels = s1_training.shape[0]
-    train_y = np.argmax(label_training, axis=1)
-    while True:
-        # random in n_sampels
-        for i in range(0, n_sampels, FLAGS.batch_size):
-            # this is an idea for random training
-            # you can relpace this loop for deep learning methods
-            start_pos = i
-            end_pos = min(i + FLAGS.batch_size, n_sampels)
-            train_s1_tmp = np.asarray(s1_training[start_pos:end_pos, :, :, :])
-            train_s2_tmp = np.asarray(s2_training[start_pos:end_pos, :, :, :])
-            train_X_batch = np.concatenate((train_s1_tmp, train_s2_tmp), axis=3)
-            train_label = train_y[start_pos:end_pos]
-            yield (train_X_batch, train_label)
-            print "%s generate data [%d:%d]" % (datetime.now(), start_pos, end_pos)
-
-
-def train_model():
-    # define net
-    model = check_print()
-
-    # model.summary()
-    n_sampels = s1_training.shape[0]
-
-    model.fit_generator(train_data_generator(), epochs=FLAGS.epochs,
-                        steps_per_epoch=n_sampels / FLAGS.batch_size, verbose=2, workers=1)
-    model.save('model/icpt_%s.h5' %date_time.strftime('%y%m%d_%H%M'))
-    return model
-
-
-def validate_model(model):
-    # make a prediction on validation
-    val_s1_batch = np.asarray(s1_validation)
-    val_s2_batch = np.asarray(s2_validation)
-    # cur_batch_size = val_s2_batch.shape[0]
-    # val_s1_batch = val_s1_batch.reshape((cur_batch_size, -1))
-    # val_s2_batch = val_s2_batch.reshape((cur_batch_size, -1))
-    # val_X_batch = np.hstack([val_s1_batch, val_s2_batch])
-    val_X_batch = np.concatenate((val_s1_batch, val_s2_batch), axis=3)
-    label_batch = np.argmax(label_validation, axis=1)
-
-    val_loss, val_acc = model.evaluate(val_X_batch, label_batch)
-    print "loss:%f accuracy:%f" % (val_loss, val_acc)
-
-    pred_y = model.predict(val_X_batch)
-    pred_y = np.argmax(pred_y, axis=1)
-    pred_y = np.hstack(pred_y)
-    print classification_report(np.argmax(label_validation, axis=1), pred_y)
-
-
-def predict_result(model):
-    # make a prediction on test
-    val_s1_batch = np.asarray(s1_test)
-    val_s2_batch = np.asarray(s2_test)
-    # cur_batch_size = val_s2_batch.shape[0]
-    # val_s1_batch = val_s1_batch.reshape((cur_batch_size, -1))
-    # val_s2_batch = val_s2_batch.reshape((cur_batch_size, -1))
-    # val_X_batch = np.hstack([val_s1_batch, val_s2_batch])
-    val_X_batch = np.concatenate((val_s1_batch, val_s2_batch), axis=3)
-    pred_y = model.predict(val_X_batch)
-    pred_y = np.argmax(pred_y, axis=1)
-    pred_y = np.hstack(pred_y)
-    # serialize
-    enc = OneHotEncoder()
-    enc.fit(np.arange(0, 17)[:, np.newaxis])
-    ret = enc.transform(pred_y[:, np.newaxis])
-    ret_df = pd.DataFrame(ret.toarray()).astype(int)
-    ret_df.to_csv('result/icpt_%s.csv' %date_time.strftime('%y%m%d_%H%M'),
-                  index=False, header=False)
 
 
 if __name__ == "__main__":
@@ -176,11 +169,15 @@ if __name__ == "__main__":
     parser.add_argument('--model_path', type=str, help='load last model from path')
     parser.add_argument('--batch_size', type=int, default=100, help='train batch size')
     parser.add_argument('--epochs', type=int, default=10, help='epoch times')
+    parser.add_argument('--workers', type=int, default=4, help='train workers')
+    parser.add_argument('--type', type=str, default='icpt', help='mode names')
     FLAGS = parser.parse_args()
 
     if FLAGS.model_path:
         model = load_model(FLAGS.model_path)
     else:
-        model = train_model()
-    validate_model(model)
-    predict_result(model)
+        # define net
+        model = create_model()
+        train_model(model, FLAGS)
+    validate_model(model, FLAGS)
+    predict_result(model, FLAGS)
