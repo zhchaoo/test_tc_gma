@@ -20,7 +20,7 @@ def create_model():
         keras.layers.Dense(17, activation=tf.nn.softmax)
     ])
 
-    model.compile(optimizer=tf.train.AdamOptimizer(),
+    model.compile(optimizer=tf.train.AdamOptimizer(learning_rate=0.02),
                   loss='sparse_categorical_crossentropy',
                   metrics=['accuracy'])
 
@@ -31,8 +31,9 @@ def create_model():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', type=str, help='load last model from path')
-    parser.add_argument('--batch_size', type=int, default=100, help='train batch size')
-    parser.add_argument('--epochs', type=int, default=10, help='epoch times')
+    parser.add_argument('--batch_size', type=int, default=64, help='train batch size')
+    parser.add_argument('--epochs', type=int, default=50, help='epoch times')
+    parser.add_argument('--steps', type=int, default=2000, help='epoch times')
     parser.add_argument('--workers', type=int, default=4, help='train workers')
     parser.add_argument('--type', type=str, default='cnn', help='mode names')
     FLAGS = parser.parse_args()

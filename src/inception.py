@@ -119,7 +119,6 @@ def create_model_inteval():
     x = BatchNormalization()(x)
 
     x = conv2D_lrn2d(x, 64, (1, 1), 1, padding='same', lrn2d_norm=False)
-
     x = conv2D_lrn2d(x, 192, (3, 3), 1, padding='same', lrn2d_norm=True)
     x = MaxPooling2D(pool_size=(2, 2), strides=2, padding='same', data_format=DATA_FORMAT)(x)
 
@@ -128,14 +127,14 @@ def create_model_inteval():
     x = MaxPooling2D(pool_size=(2, 2), strides=2, padding='same', data_format=DATA_FORMAT)(x)
 
     x = inception_module(x, params=[(192,), (96, 208), (16, 48), (64,)], concat_axis=CONCAT_AXIS)  # 4a
-    x = inception_module(x, params=[(160,), (112, 224), (24, 64), (64,)], concat_axis=CONCAT_AXIS)  # 4b
+    # x = inception_module(x, params=[(160,), (112, 224), (24, 64), (64,)], concat_axis=CONCAT_AXIS)  # 4b
     x = inception_module(x, params=[(128,), (128, 256), (24, 64), (64,)], concat_axis=CONCAT_AXIS)  # 4c
-    x = inception_module(x, params=[(112,), (144, 288), (32, 64), (64,)], concat_axis=CONCAT_AXIS)  # 4d
+    # x = inception_module(x, params=[(112,), (144, 288), (32, 64), (64,)], concat_axis=CONCAT_AXIS)  # 4d
     x = inception_module(x, params=[(256,), (160, 320), (32, 128), (128,)], concat_axis=CONCAT_AXIS)  # 4e
     x = MaxPooling2D(pool_size=(2, 2), strides=2, padding='same', data_format=DATA_FORMAT)(x)
 
     x = inception_module(x, params=[(256,), (160, 320), (32, 128), (128,)], concat_axis=CONCAT_AXIS)  # 5a
-    x = inception_module(x, params=[(384,), (192, 384), (48, 128), (128,)], concat_axis=CONCAT_AXIS)  # 5b
+    # x = inception_module(x, params=[(384,), (192, 384), (48, 128), (128,)], concat_axis=CONCAT_AXIS)  # 5b
     x = AveragePooling2D(pool_size=(2, 2), strides=1, padding='valid', data_format=DATA_FORMAT)(x)
 
     x = Flatten()(x)
@@ -167,9 +166,10 @@ def create_model():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', type=str, help='load last model from path')
-    parser.add_argument('--batch_size', type=int, default=100, help='train batch size')
-    parser.add_argument('--epochs', type=int, default=10, help='epoch times')
-    parser.add_argument('--workers', type=int, default=4, help='train workers')
+    parser.add_argument('--batch_size', type=int, default=64, help='train batch size')
+    parser.add_argument('--epochs', type=int, default=50, help='epoch times')
+    parser.add_argument('--steps', type=int, default=2000, help='epoch times')
+    parser.add_argument('--workers', type=int, default=8, help='train workers')
     parser.add_argument('--type', type=str, default='icpt', help='mode names')
     FLAGS = parser.parse_args()
 

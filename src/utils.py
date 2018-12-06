@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import os
 import random
 import keras
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import OneHotEncoder
@@ -83,6 +84,13 @@ plt.title('Sentinel-2')
 # plt.show()
 
 date_time = datetime.now()
+# train data
+n_sampels = s1_training.shape[0] / 10
+# validate data
+val_s1_batch = np.asarray(s1_validation)
+val_s2_batch = np.asarray(s2_validation)
+val_X_batch = np.concatenate((val_s1_batch, val_s2_batch), axis=3)
+val_y = np.argmax(label_validation, axis=1)
 
 
 class ThreadSafeIter:
@@ -127,27 +135,27 @@ def train_data_generator(FLAGS):
             train_X_batch = np.concatenate((train_s1_tmp, train_s2_tmp), axis=3)
             train_label = train_y[start_pos:end_pos]
             yield (train_X_batch, train_label)
-            print "%s generate data [%d:%d]" % (datetime.now(), start_pos, end_pos)
+            if end_pos % 2000 == 0:
+                print "%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels)
 
 
 def train_model(model, FLAGS):
-    n_sampels = s1_training.shape[0]
-
+    # train start
+    steps_per_epoch = n_sampels / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
+    early_stopping_callback = EarlyStopping(monitor='val_acc', patience=4)
+    checkpoint_callback = ModelCheckpoint('model/ckpt/%s.h5' %FLAGS.type, monitor='val_acc', verbose=1, save_best_only=True)
     model.fit_generator(train_data_generator(FLAGS), epochs=FLAGS.epochs,
-                        steps_per_epoch=n_sampels / FLAGS.batch_size, verbose=2, workers=FLAGS.workers)
+                        steps_per_epoch=steps_per_epoch, verbose=2, workers=FLAGS.workers,
+                        validation_data=(val_X_batch, val_y),
+                        callbacks=[early_stopping_callback, checkpoint_callback])
     model.save('model/%s_%s.h5' %(FLAGS.type, date_time.strftime('%y%m%d_%H%M')))
     return model
 
 
 def validate_model(model, FLAGS):
     # make a prediction on validation
-    val_s1_batch = np.asarray(s1_validation)
-    val_s2_batch = np.asarray(s2_validation)
-    val_X_batch = np.concatenate((val_s1_batch, val_s2_batch), axis=3)
-    label_batch = np.argmax(label_validation, axis=1)
-
-    val_loss, val_acc = model.evaluate(val_X_batch, label_batch)
-    print "loss:%f accuracy:%f" % (val_loss, val_acc)
+    # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
+    # print "loss:%f accuracy:%f" % (val_loss, val_acc)
 
     pred_y = model.predict(val_X_batch)
     pred_y = np.argmax(pred_y, axis=1)
