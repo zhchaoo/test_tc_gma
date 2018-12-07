@@ -55,7 +55,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=64, help='train batch size')
     parser.add_argument('--epochs', type=int, default=50, help='epoch times')
     parser.add_argument('--steps', type=int, default=2000, help='epoch times')
-    parser.add_argument('--workers', type=int, default=4, help='train workers')
+    parser.add_argument('--workers', type=int, default=8, help='train workers')
     parser.add_argument('--type', type=str, default='snn', help='mode names')
     FLAGS = parser.parse_args()
 
