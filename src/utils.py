@@ -84,6 +84,7 @@ plt.title('Sentinel-2')
 # plt.show()
 
 date_time = datetime.now()
+date_time_str = date_time.strftime('%y%m%d_%H%M')
 # train data
 n_sampels = s1_training.shape[0] / 10
 # validate data
@@ -97,6 +98,7 @@ class ThreadSafeIter:
     """Takes an iterator/generator and makes it thread-safe by
     serializing call to the `next` method of given iterator/generator.
     """
+
     def __init__(self, it):
         self.it = it
         self.lock = threading.Lock()
@@ -112,8 +114,10 @@ class ThreadSafeIter:
 def threadsafe_generator(f):
     """A decorator that takes a generator function and makes it thread-safe.
     """
+
     def g(*a, **kw):
         return ThreadSafeIter(f(*a, **kw))
+
     return g
 
 
@@ -143,12 +147,14 @@ def train_model(model, FLAGS):
     # train start
     steps_per_epoch = n_sampels / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
     early_stopping_callback = EarlyStopping(monitor='val_acc', patience=4)
-    checkpoint_callback = ModelCheckpoint('model/ckpt/%s.h5' %FLAGS.type, monitor='val_acc', verbose=1, save_best_only=True)
+    checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
+                                          % (FLAGS.type, date_time_str), monitor='val_acc',
+                                          verbose=1, save_best_only=True)
     model.fit_generator(train_data_generator(FLAGS), epochs=FLAGS.epochs,
                         steps_per_epoch=steps_per_epoch, verbose=2, workers=FLAGS.workers,
                         validation_data=(val_X_batch, val_y),
                         callbacks=[early_stopping_callback, checkpoint_callback])
-    model.save('model/%s_%s.h5' %(FLAGS.type, date_time.strftime('%y%m%d_%H%M')))
+    # model.save('model' + os.path.sep + '%s_%s.h5' %(FLAGS.type, date_time_str))
     return model
 
 
@@ -176,7 +182,71 @@ def predict_result(model, FLAGS):
     enc.fit(np.arange(0, 17)[:, np.newaxis])
     ret = enc.transform(pred_y[:, np.newaxis])
     ret_df = pd.DataFrame(ret.toarray()).astype(int)
-    ret_df.to_csv('result/%s_%s.csv' %(FLAGS.type, date_time.strftime('%y%m%d_%H%M')),
+    ret_df.to_csv('result' + os.path.sep + '%s_%s.csv' % (FLAGS.type, date_time_str),
+                  index=False, header=False)
+
+
+# two side inputs
+@threadsafe_generator
+def train_data_generator_2(FLAGS):
+    # simple classification example
+    # Training part
+    n_sampels = s1_training.shape[0]
+    train_y = np.argmax(label_training, axis=1)
+    while True:
+        # random in n_sampels
+        for i in range(0, n_sampels, FLAGS.batch_size):
+            # this is an idea for random training
+            # you can relpace this loop for deep learning methods
+            start_pos = i
+            end_pos = min(i + FLAGS.batch_size, n_sampels)
+            train_s1_batch = np.asarray(s1_training[start_pos:end_pos, :, :, :])
+            train_s2_batch = np.asarray(s2_training[start_pos:end_pos, :, :, :])
+            train_label = train_y[start_pos:end_pos]
+            yield ([train_s1_batch, train_s2_batch], train_label)
+            if end_pos % 2000 == 0:
+                print "%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels)
+
+
+def train_model_2(model, FLAGS):
+    # train start
+    steps_per_epoch = n_sampels / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
+    early_stopping_callback = EarlyStopping(monitor='val_acc', patience=4)
+    checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
+                                          % (FLAGS.type, date_time_str),
+                                          monitor='val_acc', verbose=1, save_best_only=True)
+    model.fit_generator(train_data_generator_2(FLAGS), epochs=FLAGS.epochs,
+                        steps_per_epoch=steps_per_epoch, verbose=2, workers=FLAGS.workers,
+                        validation_data=([val_s1_batch, val_s2_batch], val_y),
+                        callbacks=[early_stopping_callback, checkpoint_callback])
+    # model.save('model' + os.path.sep + '%s_%s.h5' %(FLAGS.type, date_time_str))
+    return model
+
+
+def validate_model_2(model, FLAGS):
+    # make a prediction on validation
+    # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
+    # print "loss:%f accuracy:%f" % (val_loss, val_acc)
+
+    pred_y = model.predict([val_s1_batch, val_s2_batch])
+    pred_y = np.argmax(pred_y, axis=1)
+    pred_y = np.hstack(pred_y)
+    print classification_report(np.argmax(label_validation, axis=1), pred_y)
+
+
+def predict_result_2(model, FLAGS):
+    # make a prediction on test
+    val_s1_batch = np.asarray(s1_test)
+    val_s2_batch = np.asarray(s2_test)
+    pred_y = model.predict([val_s1_batch, val_s2_batch])
+    pred_y = np.argmax(pred_y, axis=1)
+    pred_y = np.hstack(pred_y)
+    # serialize
+    enc = OneHotEncoder()
+    enc.fit(np.arange(0, 17)[:, np.newaxis])
+    ret = enc.transform(pred_y[:, np.newaxis])
+    ret_df = pd.DataFrame(ret.toarray()).astype(int)
+    ret_df.to_csv('result' + os.path.sep + '%s_%s.csv' % (FLAGS.type, date_time_str),
                   index=False, header=False)
 
 
@@ -187,5 +257,3 @@ def load_model(model_path):
                   metrics=['accuracy'])
     model.summary()
     return model
-
-

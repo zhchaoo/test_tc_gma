@@ -20,7 +20,7 @@ def create_model():
         keras.layers.Dense(17, activation=tf.nn.softmax)
     ])
 
-    model.compile(optimizer=tf.train.AdamOptimizer(learning_rate=0.02),
+    model.compile(optimizer=keras.optimizers.Adam(),
                   loss='sparse_categorical_crossentropy',
                   metrics=['accuracy'])
 

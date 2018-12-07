@@ -10,6 +10,7 @@ import os
 from sklearn.metrics import classification_report
 from sklearn.linear_model import SGDClassifier
 from sklearn.preprocessing import OneHotEncoder
+from datetime import datetime
 
 # to change according to your machine
 base_dir = os.path.expanduser("data/tum")
@@ -98,6 +99,7 @@ for i in range(0, n_sampels, batch_size):
     train_s1_batch = train_s1_batch.reshape((cur_batch_size, -1))
     train_s2_batch = train_s2_batch.reshape((cur_batch_size, -1))
     train_X_batch = np.hstack([train_s1_batch, train_s2_batch])
+    # train_X_batch = train_s1_batch
     label_batch = train_y[start_pos:end_pos]
     clf.partial_fit(train_X_batch, label_batch, classes=classes)
 
@@ -115,6 +117,7 @@ for i in range(0, n_val_samples, batch_size):
     val_s1_batch = val_s1_batch.reshape((cur_batch_size, -1))
     val_s2_batch = val_s2_batch.reshape((cur_batch_size, -1))
     val_X_batch = np.hstack([val_s1_batch, val_s2_batch])
+    # val_X_batch = val_s1_batch
     tmp_pred_y = clf.predict(val_X_batch)
     pred_y.append(tmp_pred_y)
 pred_y = np.hstack(pred_y)
@@ -128,12 +131,13 @@ n_val_samples = s2_test.shape[0]
 for i in range(0, n_val_samples, batch_size):
     start_pos = i
     end_pos = min(i + batch_size, n_val_samples)
-    val_s1_batch = np.asarray(s1_test[start_pos:end_pos, :, :, :])
-    val_s2_batch = np.asarray(s2_test[start_pos:end_pos, :, :, :])
-    cur_batch_size = val_s2_batch.shape[0]
-    val_s1_batch = val_s1_batch.reshape((cur_batch_size, -1))
-    val_s2_batch = val_s2_batch.reshape((cur_batch_size, -1))
-    val_X_batch = np.hstack([val_s1_batch, val_s2_batch])
+    test_s1_batch = np.asarray(s1_test[start_pos:end_pos, :, :, :])
+    test_s2_batch = np.asarray(s2_test[start_pos:end_pos, :, :, :])
+    cur_batch_size = test_s2_batch.shape[0]
+    test_s1_batch = test_s1_batch.reshape((cur_batch_size, -1))
+    test_s2_batch = test_s2_batch.reshape((cur_batch_size, -1))
+    val_X_batch = np.hstack([test_s1_batch, test_s2_batch])
+    # val_X_batch = test_s1_batch
     tmp_pred_y = clf.predict(val_X_batch)
     pred_y.append(tmp_pred_y)
 pred_y = np.hstack(pred_y)
@@ -143,4 +147,4 @@ enc = OneHotEncoder()
 enc.fit(np.arange(0, 17)[:, np.newaxis])
 ret = enc.transform(pred_y[:, np.newaxis])
 ret_df = pd.DataFrame(ret.toarray()).astype(int)
-ret_df.to_csv('result.csv', index=False, header=False)
+ret_df.to_csv('result' + os.path.sep + 'sgd_%s.csv' % datetime.now().strftime('%y%m%d_%H%M'), index=False, header=False)
