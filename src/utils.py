@@ -10,14 +10,28 @@ import matplotlib.pyplot as plt
 import os
 import random
 import keras
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+import logging
+from logging import handlers
 
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import OneHotEncoder
 from datetime import datetime
 
 VALIDATE_SPART = 340000
+LOGGING_INTERVAL = 50
 random.seed(42)
+
+date_time = datetime.now()
+date_time_str = date_time.strftime('%y%m%d_%H%M')
+logfile_handler = handlers.RotatingFileHandler(
+    'log' + os.path.sep + '%s.log' % date_time_str, maxBytes=200 * 1024 * 1024, backupCount=4)
+logfile_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+console_handler = logging.StreamHandler()
+logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().addHandler(logfile_handler)
+logging.getLogger().addHandler(console_handler)
+
 # to change according to your machine
 base_dir = os.path.expanduser("data" + os.path.sep + "tum")
 path_training = os.path.join(base_dir, 'training.h5')
@@ -35,36 +49,36 @@ fid_test = h5py.File(path_test, 'r')
 # we can have a look at which keys are stored in the file
 # you will get the return [u'label', u'sen1', u'sen2']
 # sen1 and sen2 means the satellite images
-print(fid_training.keys())
-print(fid_validation.keys())
-print(fid_test.keys())
+logging.info(fid_training.keys())
+logging.info(fid_validation.keys())
+logging.info(fid_test.keys())
 
 # get s1 image channel data
 # it is not really loaded into memory. only the indexes have been loaded.
-print("-" * 60)
-print("training part")
+logging.info("-" * 60)
+logging.info("training part")
 s1_training = fid_training['sen1']
-print(s1_training.shape)
+logging.info(s1_training.shape)
 s2_training = fid_training['sen2']
-print(s2_training.shape)
+logging.info(s2_training.shape)
 label_training = fid_training['label']
-print(label_training.shape)
+logging.info(label_training.shape)
 
-print("-" * 60)
-print("validation part")
+logging.info("-" * 60)
+logging.info("validation part")
 s1_validation = fid_validation['sen1']
-print(s1_validation.shape)
+logging.info(s1_validation.shape)
 s2_validation = fid_validation['sen2']
-print(s2_validation.shape)
+logging.info(s2_validation.shape)
 label_validation = fid_validation['label']
-print(label_validation.shape)
+logging.info(label_validation.shape)
 
-print("-" * 60)
-print("test part")
+logging.info("-" * 60)
+logging.info("test part")
 s1_test = fid_test['sen1']
-print(s1_test.shape)
+logging.info(s1_test.shape)
 s2_test = fid_test['sen2']
-print(s2_test.shape)
+logging.info(s2_test.shape)
 
 # compute the quantity for each col
 label_qty = np.sum(label_training, axis=0)
@@ -84,10 +98,6 @@ plt.colorbar()
 plt.title('Sentinel-2')
 # plt.show()
 
-date_time = datetime.now()
-date_time_str = date_time.strftime('%y%m%d_%H%M')
-# train data
-n_sampels = s1_training.shape[0]
 # validate data
 val_s1_batch = np.asarray(s1_validation)
 val_s2_batch = np.asarray(s2_validation)
@@ -95,9 +105,10 @@ val_X_batch = np.concatenate((val_s1_batch, val_s2_batch), axis=3)
 val_y = np.argmax(label_validation, axis=1)
 
 # for concatenate
-val_s1_batch_merge = s1_training[VALIDATE_SPART:, :, :, :]
-val_s2_batch_merge = s2_training[VALIDATE_SPART:, :, :, :]
-label_validation_merge = label_training[VALIDATE_SPART:, :]
+val_s1_merge_batch = s1_training[VALIDATE_SPART:, :, :, :]
+val_s2_merge_batch = s2_training[VALIDATE_SPART:, :, :, :]
+label_merge_validation = label_training[VALIDATE_SPART:, :]
+val_merge_y = np.argmax(label_merge_validation, axis=1)
 
 
 class ThreadSafeIter():
@@ -145,12 +156,13 @@ def train_data_generator(FLAGS):
             train_X_batch = np.concatenate((train_s1_tmp, train_s2_tmp), axis=3)
             train_label = train_y[start_pos:end_pos]
             yield (train_X_batch, train_label)
-            if end_pos % 2000 == 0:
-                print("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
+            if end_pos % (FLAGS.batch_size * LOGGING_INTERVAL) == 0:
+                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
 
 
 def train_model(model, FLAGS):
     # train start
+    n_sampels = s1_training.shape[0]
     steps_per_epoch = n_sampels / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
     early_stopping_callback = EarlyStopping(monitor='val_acc', patience=4)
     checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
@@ -167,12 +179,12 @@ def train_model(model, FLAGS):
 def validate_model(model, FLAGS):
     # make a prediction on validation
     # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
-    # print "loss:%f accuracy:%f" % (val_loss, val_acc)
+    # logging.info "loss:%f accuracy:%f" % (val_loss, val_acc)
 
     pred_y = model.predict(val_X_batch)
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)
-    print(classification_report(np.argmax(label_validation, axis=1), pred_y))
+    logging.info(classification_report(np.argmax(label_validation, axis=1), pred_y))
 
 
 def predict_result(model, FLAGS):
@@ -210,12 +222,13 @@ def train_data_generator_2(FLAGS):
             train_s2_batch = np.asarray(s2_training[start_pos:end_pos, :, :, :])
             train_label = train_y[start_pos:end_pos]
             yield ([train_s1_batch, train_s2_batch], train_label)
-            if end_pos % 2000 == 0:
-                print("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
+            if end_pos % (FLAGS.batch_size * LOGGING_INTERVAL) == 0:
+                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
 
 
 def train_model_2(model, FLAGS):
     # train start
+    n_sampels = s1_training.shape[0]
     steps_per_epoch = n_sampels / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
     early_stopping_callback = EarlyStopping(monitor='val_acc', patience=4)
     checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
@@ -232,12 +245,12 @@ def train_model_2(model, FLAGS):
 def validate_model_2(model, FLAGS):
     # make a prediction on validation
     # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
-    # print "loss:%f accuracy:%f" % (val_loss, val_acc)
+    # logging.info "loss:%f accuracy:%f" % (val_loss, val_acc)
 
     pred_y = model.predict([val_s1_batch, val_s2_batch])
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)
-    print(classification_report(np.argmax(label_validation, axis=1), pred_y))
+    logging.info(classification_report(np.argmax(label_validation, axis=1), pred_y))
 
 
 def predict_result_2(model, FLAGS):
@@ -261,8 +274,45 @@ def predict_result_2(model, FLAGS):
 def train_data_generator_merge_2(FLAGS):
     # simple classification example
     # Training part
-    n_sampels = s1_training.shape[0]
+    n_sampels = VALIDATE_SPART
+    n_sampels_v = s1_validation.shape[0]
     train_y = np.argmax(label_training, axis=1)
+    j = 0
+    batch_size_V = int(FLAGS.batch_size / FLAGS.vt_rate)
+    batch_size_T = FLAGS.batch_size - batch_size_V
+    while True:
+        # random in n_sampels
+        for i in range(0, n_sampels, batch_size_T):
+            # this is an idea for random training
+            # you can relpace this loop for deep learning methods
+            start_pos = i
+            end_pos = min(i + batch_size_T, n_sampels)
+            train_s1_batch = np.asarray(s1_training[start_pos:end_pos, :, :, :])
+            train_s2_batch = np.asarray(s2_training[start_pos:end_pos, :, :, :])
+            train_label = train_y[start_pos:end_pos]
+            start_pos_v = j
+            end_pos_v = min(j + batch_size_V, n_sampels_v)
+            val_s1_batch = np.asarray(s1_validation[start_pos_v:end_pos_v, :, :, :])
+            val_s2_batch = np.asarray(s2_validation[start_pos_v:end_pos_v, :, :, :])
+            val_label = val_y[start_pos_v:end_pos_v]
+            train_s1_merge_batch = np.concatenate((train_s1_batch, val_s1_batch), axis=0)
+            train_s2_merge_batch = np.concatenate((train_s2_batch, val_s2_batch), axis=0)
+            train_merge_label = np.concatenate((train_label, val_label), axis=0)
+            # update j index
+            j += batch_size_V
+            j = j if j < n_sampels_v else 0
+
+            yield ([train_s1_merge_batch, train_s2_merge_batch], train_merge_label)
+            if end_pos % (batch_size_T * LOGGING_INTERVAL) == 0:
+                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
+
+
+@threadsafe_generator
+def train_data_generator_valid_2(FLAGS):
+    # simple classification example
+    # Training part
+    n_sampels = s1_validation.shape[0]
+    train_y = np.argmax(label_validation, axis=1)
     while True:
         # random in n_sampels
         for i in range(0, n_sampels, FLAGS.batch_size):
@@ -270,38 +320,44 @@ def train_data_generator_merge_2(FLAGS):
             # you can relpace this loop for deep learning methods
             start_pos = i
             end_pos = min(i + FLAGS.batch_size, n_sampels)
-            train_s1_batch = np.asarray(s1_training[start_pos:end_pos, :, :, :])
-            train_s2_batch = np.asarray(s2_training[start_pos:end_pos, :, :, :])
-            train_label = train_y[start_pos:end_pos]
+            train_s1_batch = np.asarray(s1_validation[start_pos:end_pos, :, :, :])
+            train_s2_batch = np.asarray(s2_validation[start_pos:end_pos, :, :, :])
+            train_label = val_y[start_pos:end_pos]
             yield ([train_s1_batch, train_s2_batch], train_label)
-            if end_pos % 2000 == 0:
-                print("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
+            if end_pos % (FLAGS.batch_size * LOGGING_INTERVAL) == 0:
+                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
 
 
-def train_model_merge_2(model, FLAGS):
+def train_model_merge_2(model, FLAGS, only_valid=False):
     # train start
+    n_sampels = s1_training.shape[0]
     steps_per_epoch = n_sampels / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
-    early_stopping_callback = EarlyStopping(monitor='val_acc', patience=4)
+    if only_valid:
+        epochs = FLAGS.epochs_v
+        generator = train_data_generator_valid_2
+    else:
+        epochs = FLAGS.epochs
+        generator = train_data_generator_merge_2
     checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
                                           % (FLAGS.type, date_time_str),
-                                          monitor='val_acc', verbose=1, save_best_only=True)
-    model.fit_generator(train_data_generator_2(FLAGS), epochs=FLAGS.epochs,
+                                          monitor='val_acc', verbose=1)
+    model.fit_generator(generator(FLAGS), epochs=epochs,
                         steps_per_epoch=steps_per_epoch, verbose=2, workers=FLAGS.workers,
-                        validation_data=([val_s1_batch, val_s2_batch], val_y),
-                        callbacks=[early_stopping_callback, checkpoint_callback])
-    # model.save('model' + os.path.sep + '%s_%s.h5' %(FLAGS.type, date_time_str))
+                        validation_data=([val_s1_merge_batch, val_s2_merge_batch], val_merge_y),
+                        callbacks=[checkpoint_callback])
+    model.save('model' + os.path.sep + '%s_%s.h5' % (FLAGS.type, date_time_str))
     return model
 
 
 def validate_model_merge_2(model, FLAGS):
     # make a prediction on validation
     # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
-    # print "loss:%f accuracy:%f" % (val_loss, val_acc)
+    # logging.info "loss:%f accuracy:%f" % (val_loss, val_acc)
 
-    pred_y = model.predict([val_s1_batch, val_s2_batch])
+    pred_y = model.predict([val_s1_merge_batch, val_s2_merge_batch])
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)
-    print(classification_report(np.argmax(label_validation, axis=1), pred_y))
+    logging.info(classification_report(np.argmax(label_merge_validation, axis=1), pred_y))
 
 
 def predict_result_merge_2(model, FLAGS):

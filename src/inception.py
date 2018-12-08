@@ -159,7 +159,7 @@ def create_model():
     model.compile(optimizer='adam',
                   loss='sparse_categorical_crossentropy',
                   metrics=['accuracy'])
-    print 'Model Compiled'
+    print('Model Compiled')
     return model
 
 
