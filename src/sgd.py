@@ -25,36 +25,36 @@ fid_test = h5py.File(path_test, 'r')
 # we can have a look at which keys are stored in the file
 # you will get the return [u'label', u'sen1', u'sen2']
 # sen1 and sen2 means the satellite images
-print fid_training.keys()
-print fid_validation.keys()
-print fid_test.keys()
+print(fid_training.keys())
+print(fid_validation.keys())
+print(fid_test.keys())
 
 # get s1 image channel data
 # it is not really loaded into memory. only the indexes have been loaded.
-print "-" * 60
-print "training part"
+print("-" * 60)
+print("training part")
 s1_training = fid_training['sen1']
-print s1_training.shape
+print(s1_training.shape)
 s2_training = fid_training['sen2']
-print s2_training.shape
+print(s2_training.shape)
 label_training = fid_training['label']
-print label_training.shape
+print(label_training.shape)
 
-print "-" * 60
-print "validation part"
+print("-" * 60)
+print("validation part")
 s1_validation = fid_validation['sen1']
-print s1_validation.shape
+print(s1_validation.shape)
 s2_validation = fid_validation['sen2']
-print s2_validation.shape
+print(s2_validation.shape)
 label_validation = fid_validation['label']
-print label_validation.shape
+print(label_validation.shape)
 
-print "-" * 60
-print "test part"
+print("-" * 60)
+print("test part")
 s1_test = fid_test['sen1']
-print s1_test.shape
+print(s1_test.shape)
 s2_test = fid_test['sen2']
-print s2_test.shape
+print(s2_test.shape)
 
 # compute the quantity for each col
 label_qty = np.sum(label_training, axis=0)
@@ -85,14 +85,14 @@ clf = SGDClassifier()
 train_y = np.argmax(train_label, axis=1)
 classes = list(set(train_y))
 batch_size = 10000
-n_sampels = train_s1.shape[0]
+n_samples = train_s1.shape[0]
 
-for i in range(0, n_sampels, batch_size):
+for i in range(0, n_samples, batch_size):
     # this is an idea for batch training
     # you can relpace this loop for deep learning methods
-    print("done %d/%d" % (i, n_sampels))
+    print("done %d/%d" % (i, n_samples))
     start_pos = i
-    end_pos = min(i + batch_size, n_sampels)
+    end_pos = min(i + batch_size, n_samples)
     train_s1_batch = np.asarray(train_s1[start_pos:end_pos, :, :, :])
     train_s2_batch = np.asarray(train_s2[start_pos:end_pos, :, :, :])
     cur_batch_size = train_s2_batch.shape[0]
@@ -122,7 +122,7 @@ for i in range(0, n_val_samples, batch_size):
     pred_y.append(tmp_pred_y)
 pred_y = np.hstack(pred_y)
 
-print classification_report(train_val_y, pred_y)
+print(classification_report(train_val_y, pred_y))
 
 # make a prediction on test
 pred_y = []
