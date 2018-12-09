@@ -382,9 +382,14 @@ def train_model_merge_2(model, FLAGS, only_valid=False):
     checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
                                           % (FLAGS.type, date_time_str),
                                           monitor='val_acc', verbose=1)
+    if FLAGS.normalize:
+        validate_data = ([normalize_s1(val_s1_merge_batch), normalize_s2(val_s2_merge_batch)], val_merge_y)
+    else:
+        validate_data = ([val_s1_merge_batch, val_s2_merge_batch], val_merge_y)
+
     model.fit_generator(generator(FLAGS), epochs=epochs,
                         steps_per_epoch=steps_per_epoch, verbose=2, workers=FLAGS.workers,
-                        validation_data=([val_s1_merge_batch, val_s2_merge_batch], val_merge_y),
+                        validation_data=validate_data,
                         callbacks=[checkpoint_callback])
     model.save('model' + os.path.sep + '%s_%s.h5' % (FLAGS.type, date_time_str))
     return model
@@ -395,7 +400,10 @@ def validate_model_merge_2(model, FLAGS):
     # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
     # logging.info "loss:%f accuracy:%f" % (val_loss, val_acc)
 
-    pred_y = model.predict([val_s1_merge_batch, val_s2_merge_batch])
+    if FLAGS.normalize:
+        pred_y = model.predict([normalize_s1(val_s1_merge_batch), normalize_s2(val_s2_merge_batch)])
+    else:
+        pred_y = model.predict([val_s1_merge_batch, val_s2_merge_batch])
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)
     logging.info(classification_report(np.argmax(label_merge_validation, axis=1), pred_y))
@@ -403,9 +411,13 @@ def validate_model_merge_2(model, FLAGS):
 
 def predict_result_merge_2(model, FLAGS):
     # make a prediction on test
-    val_s1_batch = np.asarray(s1_test)
-    val_s2_batch = np.asarray(s2_test)
-    pred_y = model.predict([val_s1_batch, val_s2_batch])
+    if FLAGS.normalize:
+        test_s1_batch = np.asarray(s1_test)
+        test_s2_batch = np.asarray(s2_test)
+    else:
+        test_s1_batch = normalize_s1(np.asarray(s1_test))
+        test_s2_batch = normalize_s2(np.asarray(s2_test))
+    pred_y = model.predict([test_s1_batch, test_s2_batch])
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)
     # serialize
