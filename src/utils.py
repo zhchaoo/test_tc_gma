@@ -99,18 +99,6 @@ plt.colorbar()
 plt.title('Sentinel-2')
 # plt.show()
 
-# validate data
-val_s1_batch = np.asarray(s1_validation)
-val_s2_batch = np.asarray(s2_validation)
-val_X_batch = np.concatenate((val_s1_batch, val_s2_batch), axis=3)
-val_y = np.argmax(label_validation, axis=1)
-
-# for concatenate
-val_s1_merge_batch = s1_training[VALIDATE_SPART:, :, :, :]
-val_s2_merge_batch = s2_training[VALIDATE_SPART:, :, :, :]
-label_merge_validation = label_training[VALIDATE_SPART:, :]
-val_merge_y = np.argmax(label_merge_validation, axis=1)
-
 
 class ThreadSafeIter():
     """Takes an iterator/generator and makes it thread-safe by
@@ -166,6 +154,29 @@ def shuffle_batch(samples):
     return ret_samples
 
 
+def get_validate_merge_data(FLAGS):
+    # for concatenate
+    val_s1_merge_batch = s1_training[VALIDATE_SPART:, :, :, :]
+    val_s2_merge_batch = s2_training[VALIDATE_SPART:, :, :, :]
+    label_merge_validation = label_training[VALIDATE_SPART:, :]
+    val_merge_y = np.argmax(label_merge_validation, axis=1)
+    if FLAGS.normalize:
+        return [normalize_s1(val_s1_merge_batch), normalize_s2(val_s2_merge_batch)], val_merge_y
+    else:
+        return [val_s1_merge_batch, val_s2_merge_batch], val_merge_y
+
+
+def get_validate_data(FLAGS):
+    # validate data
+    val_s1_batch = np.asarray(s1_validation)
+    val_s2_batch = np.asarray(s2_validation)
+    val_y = np.argmax(label_validation, axis=1)
+    if FLAGS.normalize:
+        return [normalize_s1(val_s1_batch), normalize_s2(val_s2_batch)], val_y
+    else:
+        return [val_s1_batch, val_s2_batch], val_y
+
+
 @threadsafe_generator
 def train_data_generator(FLAGS):
     # simple classification example
@@ -196,9 +207,10 @@ def train_model(model, FLAGS):
     checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
                                           % (FLAGS.type, date_time_str), monitor='val_acc',
                                           verbose=1, save_best_only=True)
+    val_data = get_validate_data(FLAGS)
     model.fit_generator(train_data_generator(FLAGS), epochs=FLAGS.epochs,
                         steps_per_epoch=steps_per_epoch, verbose=2, workers=FLAGS.workers,
-                        validation_data=(val_X_batch, val_y),
+                        validation_data=(np.concatenate(val_data[0], axis=3), val_data[1]),
                         callbacks=[early_stopping_callback, checkpoint_callback])
     # model.save('model' + os.path.sep + '%s_%s.h5' %(FLAGS.type, date_time_str))
     return model
@@ -209,7 +221,8 @@ def validate_model(model, FLAGS):
     # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
     # logging.info "loss:%f accuracy:%f" % (val_loss, val_acc)
 
-    pred_y = model.predict(val_X_batch)
+    val_data = get_validate_data(FLAGS)
+    pred_y = model.predict(np.concatenate(val_data[0], axis=3))
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)
     logging.info(classification_report(np.argmax(label_validation, axis=1), pred_y))
@@ -264,7 +277,7 @@ def train_model_2(model, FLAGS):
                                           monitor='val_acc', verbose=1, save_best_only=True)
     model.fit_generator(train_data_generator_2(FLAGS), epochs=FLAGS.epochs,
                         steps_per_epoch=steps_per_epoch, verbose=2, workers=FLAGS.workers,
-                        validation_data=([val_s1_batch, val_s2_batch], val_y),
+                        validation_data=(get_validate_data(FLAGS)),
                         callbacks=[early_stopping_callback, checkpoint_callback])
     # model.save('model' + os.path.sep + '%s_%s.h5' %(FLAGS.type, date_time_str))
     return model
@@ -275,7 +288,7 @@ def validate_model_2(model, FLAGS):
     # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
     # logging.info "loss:%f accuracy:%f" % (val_loss, val_acc)
 
-    pred_y = model.predict([val_s1_batch, val_s2_batch])
+    pred_y = model.predict(get_validate_data(FLAGS)[0])
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)
     logging.info(classification_report(np.argmax(label_validation, axis=1), pred_y))
@@ -322,6 +335,7 @@ def train_data_generator_merge_2(FLAGS):
             end_pos_v = min(j + batch_size_V, n_samples_v)
             val_s1_batch = np.asarray(s1_validation[start_pos_v:end_pos_v, :, :, :])
             val_s2_batch = np.asarray(s2_validation[start_pos_v:end_pos_v, :, :, :])
+            val_y = np.argmax(label_validation, axis=1)
             val_label = val_y[start_pos_v:end_pos_v]
             train_s1_merge_batch = np.concatenate((train_s1_batch, val_s1_batch), axis=0)
             train_s2_merge_batch = np.concatenate((train_s2_batch, val_s2_batch), axis=0)
@@ -357,6 +371,7 @@ def train_data_generator_valid_2(FLAGS):
             train_s1_batch = np.asarray(s1_validation[start_pos:end_pos, :, :, :])
             train_s2_batch = np.asarray(s2_validation[start_pos:end_pos, :, :, :])
             train_label = val_y[start_pos:end_pos]
+            val_y = np.argmax(label_validation, axis=1)
             if FLAGS.normalize:
                 train_s1_batch = normalize_s1(train_s1_batch)
                 train_s2_batch = normalize_s2(train_s2_batch)
@@ -382,14 +397,10 @@ def train_model_merge_2(model, FLAGS, only_valid=False):
     checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
                                           % (FLAGS.type, date_time_str),
                                           monitor='val_acc', verbose=1)
-    if FLAGS.normalize:
-        validate_data = ([normalize_s1(val_s1_merge_batch), normalize_s2(val_s2_merge_batch)], val_merge_y)
-    else:
-        validate_data = ([val_s1_merge_batch, val_s2_merge_batch], val_merge_y)
 
     model.fit_generator(generator(FLAGS), epochs=epochs,
                         steps_per_epoch=steps_per_epoch, verbose=2, workers=FLAGS.workers,
-                        validation_data=validate_data,
+                        validation_data=(get_validate_merge_data(FLAGS)),
                         callbacks=[checkpoint_callback])
     model.save('model' + os.path.sep + '%s_%s.h5' % (FLAGS.type, date_time_str))
     return model
@@ -400,13 +411,11 @@ def validate_model_merge_2(model, FLAGS):
     # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
     # logging.info "loss:%f accuracy:%f" % (val_loss, val_acc)
 
-    if FLAGS.normalize:
-        pred_y = model.predict([normalize_s1(val_s1_merge_batch), normalize_s2(val_s2_merge_batch)])
-    else:
-        pred_y = model.predict([val_s1_merge_batch, val_s2_merge_batch])
+    val_data = get_validate_merge_data(FLAGS)
+    pred_y = model.predict(val_data[0])
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)
-    logging.info(classification_report(np.argmax(label_merge_validation, axis=1), pred_y))
+    logging.info(classification_report(val_data[1], pred_y))
 
 
 def predict_result_merge_2(model, FLAGS):

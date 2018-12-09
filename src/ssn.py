@@ -59,7 +59,7 @@ if __name__ == "__main__":
         # define net
         model = create_model()
         train_model_merge_2(model, FLAGS, False)
-    validate_model_merge_2(model, FLAGS)
-    train_model_merge_2(model, FLAGS, True)
+        validate_model_merge_2(model, FLAGS)
+        train_model_merge_2(model, FLAGS, True)
     validate_model_merge_2(model, FLAGS)
     predict_result_merge_2(model, FLAGS)
