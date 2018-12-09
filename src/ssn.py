@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument('--model_path', type=str, help='load last model from path')
     parser.add_argument('--batch_size', type=int, default=256, help='train batch size')
     parser.add_argument('--vt_rate', type=int, default=8, help='merge train val rate')
-    parser.add_argument('--epochs', type=int, default=18, help='epoch times')
+    parser.add_argument('--epochs', type=int, default=20, help='epoch times')
     parser.add_argument('--epochs_v', type=int, default=20, help='epoch val times')
     parser.add_argument('--steps', type=int, default=1000, help='epoch times')
     parser.add_argument('--steps_v', type=int, default=100, help='epoch times')
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     parser.add_argument('--shuffle', default=False, action='store_true', help='enable normalize')
     parser.add_argument('--train_spart', type=int, default=340000)
     parser.add_argument('--valid_spart', type=int, default=22000)
-    parser.add_argument('--early_stop', type=int, default=0)
+    parser.add_argument('--early_stop', type=int, default=5)
     FLAGS = parser.parse_args()
 
     if FLAGS.model_path:
@@ -62,8 +62,8 @@ if __name__ == "__main__":
     else:
         # define net
         model = create_model()
-        # train_model_merge_2(model, FLAGS, False)
-        # validate_model_merge_2(model, FLAGS)
+        train_model_merge_2(model, FLAGS, False)
+        validate_model_merge_2(model, FLAGS)
         train_model_merge_2(model, FLAGS, True, valdat_from='spart_valid')
     validate_model_merge_2(model, FLAGS, valdat_from='spart_valid')
     predict_result_merge_2(model, FLAGS)

@@ -384,7 +384,7 @@ def train_data_generator_valid_2(FLAGS):
                 logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_samples))
 
 
-def train_model_merge_2(model, FLAGS, only_valid=False, valdat_from='train_spart'):
+def train_model_merge_2(model, FLAGS, only_valid=False, valdat_from='spart_train'):
     # train start
     if only_valid:
         epochs = FLAGS.epochs_v
