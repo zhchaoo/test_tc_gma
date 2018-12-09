@@ -412,11 +412,11 @@ def validate_model_merge_2(model, FLAGS):
 def predict_result_merge_2(model, FLAGS):
     # make a prediction on test
     if FLAGS.normalize:
-        test_s1_batch = np.asarray(s1_test)
-        test_s2_batch = np.asarray(s2_test)
-    else:
         test_s1_batch = normalize_s1(np.asarray(s1_test))
         test_s2_batch = normalize_s2(np.asarray(s2_test))
+    else:
+        test_s1_batch = np.asarray(s1_test)
+        test_s2_batch = np.asarray(s2_test)
     pred_y = model.predict([test_s1_batch, test_s2_batch])
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)
