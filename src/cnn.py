@@ -4,7 +4,7 @@
 import argparse
 import tensorflow as tf
 
-from utils import *
+from tasks import *
 
 
 def create_model():

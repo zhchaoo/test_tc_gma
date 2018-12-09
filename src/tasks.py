@@ -18,7 +18,6 @@ from sklearn.metrics import classification_report
 from sklearn.preprocessing import OneHotEncoder
 from datetime import datetime
 
-VALIDATE_SPART = 340000
 LOGGING_INTERVAL = 50
 random.seed(42)
 np.random.seed(42)
@@ -81,6 +80,8 @@ logging.info(s1_test.shape)
 s2_test = fid_test['sen2']
 logging.info(s2_test.shape)
 
+train_default_spart = s1_training.shape[0]
+valid_default_spart = s1_validation.shape[0]
 # compute the quantity for each col
 label_qty = np.sum(label_training, axis=0)
 
@@ -154,23 +155,23 @@ def shuffle_batch(samples):
     return ret_samples
 
 
-def get_validate_merge_data(FLAGS):
+def get_validate_data(FLAGS, valdat_from='valid'):
     # for concatenate
-    val_s1_merge_batch = s1_training[VALIDATE_SPART:, :, :, :]
-    val_s2_merge_batch = s2_training[VALIDATE_SPART:, :, :, :]
-    label_merge_validation = label_training[VALIDATE_SPART:, :]
-    val_merge_y = np.argmax(label_merge_validation, axis=1)
-    if FLAGS.normalize:
-        return [normalize_s1(val_s1_merge_batch), normalize_s2(val_s2_merge_batch)], val_merge_y
-    else:
-        return [val_s1_merge_batch, val_s2_merge_batch], val_merge_y
-
-
-def get_validate_data(FLAGS):
-    # validate data
-    val_s1_batch = np.asarray(s1_validation)
-    val_s2_batch = np.asarray(s2_validation)
-    val_y = np.argmax(label_validation, axis=1)
+    if valdat_from == 'spart_train':
+        val_s1_batch = s1_training[FLAGS.train_spart:, :, :, :]
+        val_s2_batch = s2_training[FLAGS.train_spart:, :, :, :]
+        val_label = label_training[FLAGS.train_spart:, :]
+        val_y = np.argmax(val_label, axis=1)
+    elif valdat_from == 'spart_valid':
+        val_s1_batch = s1_validation[FLAGS.valid_spart:, :, :, :]
+        val_s2_batch = s2_validation[FLAGS.valid_spart:, :, :, :]
+        val_label = label_validation[FLAGS.valid_spart:, :]
+        val_y = np.argmax(val_label, axis=1)
+    elif valdat_from == 'valid':
+        # validate data
+        val_s1_batch = np.asarray(s1_validation)
+        val_s2_batch = np.asarray(s2_validation)
+        val_y = np.argmax(label_validation, axis=1)
     if FLAGS.normalize:
         return [normalize_s1(val_s1_batch), normalize_s2(val_s2_batch)], val_y
     else:
@@ -315,7 +316,7 @@ def predict_result_2(model, FLAGS):
 def train_data_generator_merge_2(FLAGS):
     # simple classification example
     # Training part
-    n_samples = VALIDATE_SPART
+    n_samples = FLAGS.train_spart
     n_samples_v = s1_validation.shape[0]
     train_y = np.argmax(label_training, axis=1)
     j = 0
@@ -359,8 +360,7 @@ def train_data_generator_merge_2(FLAGS):
 def train_data_generator_valid_2(FLAGS):
     # simple classification example
     # Training part
-    n_samples = s1_validation.shape[0]
-    train_y = np.argmax(label_validation, axis=1)
+    n_samples = FLAGS.valid_spart
     while True:
         # random in n_samples
         for i in range(0, n_samples, FLAGS.batch_size):
@@ -370,8 +370,8 @@ def train_data_generator_valid_2(FLAGS):
             end_pos = min(i + FLAGS.batch_size, n_samples)
             train_s1_batch = np.asarray(s1_validation[start_pos:end_pos, :, :, :])
             train_s2_batch = np.asarray(s2_validation[start_pos:end_pos, :, :, :])
-            train_label = val_y[start_pos:end_pos]
             val_y = np.argmax(label_validation, axis=1)
+            train_label = val_y[start_pos:end_pos]
             if FLAGS.normalize:
                 train_s1_batch = normalize_s1(train_s1_batch)
                 train_s2_batch = normalize_s2(train_s2_batch)
@@ -384,34 +384,43 @@ def train_data_generator_valid_2(FLAGS):
                 logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_samples))
 
 
-def train_model_merge_2(model, FLAGS, only_valid=False):
+def train_model_merge_2(model, FLAGS, only_valid=False, valdat_from='train_spart'):
     # train start
-    n_samples = s1_training.shape[0]
-    steps_per_epoch = n_samples / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
     if only_valid:
         epochs = FLAGS.epochs_v
         generator = train_data_generator_valid_2
+        n_samples = FLAGS.valid_spart
+        steps_per_epoch = n_samples / FLAGS.batch_size if FLAGS.steps_v is None else FLAGS.steps_v
     else:
         epochs = FLAGS.epochs
         generator = train_data_generator_merge_2
-    checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
-                                          % (FLAGS.type, date_time_str),
-                                          monitor='val_acc', verbose=1)
+        n_samples = FLAGS.train_spart
+        steps_per_epoch = n_samples / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
+    early_stopping_callback = EarlyStopping(monitor='val_acc', patience=FLAGS.early_stop)
+    ckpt_path = 'model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5' % (FLAGS.type, date_time_str),
+    checkpoint_callback = ModelCheckpoint(ckpt_path,
+                                          monitor='val_acc', verbose=1, save_best_only=FLAGS.early_stop >= 0)
+    if FLAGS.early_stop >= 0:
+        callbacks = [early_stopping_callback, checkpoint_callback]
+    else:
+        callbacks = [checkpoint_callback]
 
     model.fit_generator(generator(FLAGS), epochs=epochs,
                         steps_per_epoch=steps_per_epoch, verbose=2, workers=FLAGS.workers,
-                        validation_data=(get_validate_merge_data(FLAGS)),
-                        callbacks=[checkpoint_callback])
+                        validation_data=(get_validate_data(FLAGS, valdat_from=valdat_from)),
+                        callbacks=callbacks)
+    if FLAGS.early_stop:
+        model.load_weights(ckpt_path)
     model.save('model' + os.path.sep + '%s_%s.h5' % (FLAGS.type, date_time_str))
     return model
 
 
-def validate_model_merge_2(model, FLAGS):
+def validate_model_merge_2(model, FLAGS, valdat_from='train_spart'):
     # make a prediction on validation
     # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
     # logging.info "loss:%f accuracy:%f" % (val_loss, val_acc)
 
-    val_data = get_validate_merge_data(FLAGS)
+    val_data = get_validate_data(FLAGS, valdat_from)
     pred_y = model.predict(val_data[0])
     pred_y = np.argmax(pred_y, axis=1)
     pred_y = np.hstack(pred_y)

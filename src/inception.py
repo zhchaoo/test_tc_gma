@@ -3,7 +3,7 @@
 
 import argparse
 
-from utils import *
+from tasks import *
 from keras import regularizers
 from keras.layers import Conv2D, MaxPooling2D, AveragePooling2D
 from keras.layers import Flatten, Dense, Dropout, BatchNormalization
