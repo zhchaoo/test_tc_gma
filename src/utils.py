@@ -21,6 +21,7 @@ from datetime import datetime
 VALIDATE_SPART = 340000
 LOGGING_INTERVAL = 50
 random.seed(42)
+np.random.seed(42)
 
 date_time = datetime.now()
 date_time_str = date_time.strftime('%y%m%d_%H%M')
@@ -138,32 +139,59 @@ def threadsafe_generator(f):
     return g
 
 
+def normalize_s1(s1_input):
+    s1_input[:, :, :, 4] = np.log10(s1_input[:, :, :, 4])
+    s1_input[:, :, :, 5] = np.log10(s1_input[:, :, :, 5])
+    return np.divide(s1_input, [120, 120, 120, 120, 4.62, 4.62, 8000, 5600])
+
+
+def normalize_s2(s2_input):
+    return s2_input / 2.8
+
+
+def shuffle_batch(samples):
+    ret_samples = []
+    n_samples = samples[0].shape[0]
+    index = np.arange(n_samples)
+    np.random.shuffle(index)
+    for sample in samples:
+        if len(sample.shape) == 4:
+            ret_samples.append(sample[index, :, :, :])
+        elif len(sample.shape) == 2:
+            ret_samples.append(sample[index, :])
+        elif len(sample.shape) == 1:
+            ret_samples.append(sample[index])
+        else:
+            raise Exception('sample shape error')
+    return ret_samples
+
+
 @threadsafe_generator
 def train_data_generator(FLAGS):
     # simple classification example
     # Training part
-    n_sampels = s1_training.shape[0]
+    n_samples = s1_training.shape[0]
     train_y = np.argmax(label_training, axis=1)
     while True:
-        # random in n_sampels
-        for i in range(0, n_sampels, FLAGS.batch_size):
+        # random in n_samples
+        for i in range(0, n_samples, FLAGS.batch_size):
             # this is an idea for random training
             # you can relpace this loop for deep learning methods
             start_pos = i
-            end_pos = min(i + FLAGS.batch_size, n_sampels)
+            end_pos = min(i + FLAGS.batch_size, n_samples)
             train_s1_tmp = np.asarray(s1_training[start_pos:end_pos, :, :, :])
             train_s2_tmp = np.asarray(s2_training[start_pos:end_pos, :, :, :])
             train_X_batch = np.concatenate((train_s1_tmp, train_s2_tmp), axis=3)
             train_label = train_y[start_pos:end_pos]
             yield (train_X_batch, train_label)
             if end_pos % (FLAGS.batch_size * LOGGING_INTERVAL) == 0:
-                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
+                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_samples))
 
 
 def train_model(model, FLAGS):
     # train start
-    n_sampels = s1_training.shape[0]
-    steps_per_epoch = n_sampels / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
+    n_samples = s1_training.shape[0]
+    steps_per_epoch = n_samples / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
     early_stopping_callback = EarlyStopping(monitor='val_acc', patience=4)
     checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
                                           % (FLAGS.type, date_time_str), monitor='val_acc',
@@ -209,27 +237,27 @@ def predict_result(model, FLAGS):
 def train_data_generator_2(FLAGS):
     # simple classification example
     # Training part
-    n_sampels = s1_training.shape[0]
+    n_samples = s1_training.shape[0]
     train_y = np.argmax(label_training, axis=1)
     while True:
-        # random in n_sampels
-        for i in range(0, n_sampels, FLAGS.batch_size):
+        # random in n_samples
+        for i in range(0, n_samples, FLAGS.batch_size):
             # this is an idea for random training
             # you can relpace this loop for deep learning methods
             start_pos = i
-            end_pos = min(i + FLAGS.batch_size, n_sampels)
+            end_pos = min(i + FLAGS.batch_size, n_samples)
             train_s1_batch = np.asarray(s1_training[start_pos:end_pos, :, :, :])
             train_s2_batch = np.asarray(s2_training[start_pos:end_pos, :, :, :])
             train_label = train_y[start_pos:end_pos]
             yield ([train_s1_batch, train_s2_batch], train_label)
             if end_pos % (FLAGS.batch_size * LOGGING_INTERVAL) == 0:
-                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
+                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_samples))
 
 
 def train_model_2(model, FLAGS):
     # train start
-    n_sampels = s1_training.shape[0]
-    steps_per_epoch = n_sampels / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
+    n_samples = s1_training.shape[0]
+    steps_per_epoch = n_samples / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
     early_stopping_callback = EarlyStopping(monitor='val_acc', patience=4)
     checkpoint_callback = ModelCheckpoint('model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5'
                                           % (FLAGS.type, date_time_str),
@@ -274,24 +302,24 @@ def predict_result_2(model, FLAGS):
 def train_data_generator_merge_2(FLAGS):
     # simple classification example
     # Training part
-    n_sampels = VALIDATE_SPART
-    n_sampels_v = s1_validation.shape[0]
+    n_samples = VALIDATE_SPART
+    n_samples_v = s1_validation.shape[0]
     train_y = np.argmax(label_training, axis=1)
     j = 0
     batch_size_V = int(FLAGS.batch_size / FLAGS.vt_rate)
     batch_size_T = FLAGS.batch_size - batch_size_V
     while True:
-        # random in n_sampels
-        for i in range(0, n_sampels, batch_size_T):
+        # random in n_samples
+        for i in range(0, n_samples, batch_size_T):
             # this is an idea for random training
             # you can relpace this loop for deep learning methods
             start_pos = i
-            end_pos = min(i + batch_size_T, n_sampels)
+            end_pos = min(i + batch_size_T, n_samples)
             train_s1_batch = np.asarray(s1_training[start_pos:end_pos, :, :, :])
             train_s2_batch = np.asarray(s2_training[start_pos:end_pos, :, :, :])
             train_label = train_y[start_pos:end_pos]
             start_pos_v = j
-            end_pos_v = min(j + batch_size_V, n_sampels_v)
+            end_pos_v = min(j + batch_size_V, n_samples_v)
             val_s1_batch = np.asarray(s1_validation[start_pos_v:end_pos_v, :, :, :])
             val_s2_batch = np.asarray(s2_validation[start_pos_v:end_pos_v, :, :, :])
             val_label = val_y[start_pos_v:end_pos_v]
@@ -300,38 +328,51 @@ def train_data_generator_merge_2(FLAGS):
             train_merge_label = np.concatenate((train_label, val_label), axis=0)
             # update j index
             j += batch_size_V
-            j = j if j < n_sampels_v else 0
+            j = j if j < n_samples_v else 0
+            if FLAGS.normalize:
+                train_s1_merge_batch = normalize_s1(train_s1_merge_batch)
+                train_s2_merge_batch = normalize_s2(train_s2_merge_batch)
+            if FLAGS.shuffle:
+                train_s1_merge_batch, train_s2_merge_batch, train_merge_label = shuffle_batch(
+                    [train_s1_merge_batch, train_s2_merge_batch, train_merge_label])
 
             yield ([train_s1_merge_batch, train_s2_merge_batch], train_merge_label)
             if end_pos % (batch_size_T * LOGGING_INTERVAL) == 0:
-                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
+                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_samples))
 
 
 @threadsafe_generator
 def train_data_generator_valid_2(FLAGS):
     # simple classification example
     # Training part
-    n_sampels = s1_validation.shape[0]
+    n_samples = s1_validation.shape[0]
     train_y = np.argmax(label_validation, axis=1)
     while True:
-        # random in n_sampels
-        for i in range(0, n_sampels, FLAGS.batch_size):
+        # random in n_samples
+        for i in range(0, n_samples, FLAGS.batch_size):
             # this is an idea for random training
             # you can relpace this loop for deep learning methods
             start_pos = i
-            end_pos = min(i + FLAGS.batch_size, n_sampels)
+            end_pos = min(i + FLAGS.batch_size, n_samples)
             train_s1_batch = np.asarray(s1_validation[start_pos:end_pos, :, :, :])
             train_s2_batch = np.asarray(s2_validation[start_pos:end_pos, :, :, :])
             train_label = val_y[start_pos:end_pos]
+            if FLAGS.normalize:
+                train_s1_batch = normalize_s1(train_s1_batch)
+                train_s2_batch = normalize_s2(train_s2_batch)
+            if FLAGS.shuffle:
+                train_s1_batch, train_s2_batch, train_label = shuffle_batch(
+                    [train_s1_batch, train_s2_batch, train_label])
+
             yield ([train_s1_batch, train_s2_batch], train_label)
             if end_pos % (FLAGS.batch_size * LOGGING_INTERVAL) == 0:
-                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_sampels))
+                logging.info("%s generate data %d/%d" % (datetime.now(), end_pos, n_samples))
 
 
 def train_model_merge_2(model, FLAGS, only_valid=False):
     # train start
-    n_sampels = s1_training.shape[0]
-    steps_per_epoch = n_sampels / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
+    n_samples = s1_training.shape[0]
+    steps_per_epoch = n_samples / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
     if only_valid:
         epochs = FLAGS.epochs_v
         generator = train_data_generator_valid_2

@@ -85,14 +85,14 @@ clf = SGDClassifier()
 train_y = np.argmax(train_label, axis=1)
 classes = list(set(train_y))
 batch_size = 10000
-n_sampels = train_s1.shape[0]
+n_samples = train_s1.shape[0]
 
-for i in range(0, n_sampels, batch_size):
+for i in range(0, n_samples, batch_size):
     # this is an idea for batch training
     # you can relpace this loop for deep learning methods
-    print("done %d/%d" % (i, n_sampels))
+    print("done %d/%d" % (i, n_samples))
     start_pos = i
-    end_pos = min(i + batch_size, n_sampels)
+    end_pos = min(i + batch_size, n_samples)
     train_s1_batch = np.asarray(train_s1[start_pos:end_pos, :, :, :])
     train_s2_batch = np.asarray(train_s2[start_pos:end_pos, :, :, :])
     cur_batch_size = train_s2_batch.shape[0]
