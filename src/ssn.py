@@ -53,8 +53,9 @@ if __name__ == "__main__":
     parser.add_argument('--normalize', default=False, action='store_true', help='enable normalize')
     parser.add_argument('--shuffle', default=False, action='store_true', help='enable normalize')
     parser.add_argument('--train_spart', type=int, default=340000)
-    parser.add_argument('--valid_spart', type=int, default=22000)
-    parser.add_argument('--early_stop', type=int, default=5)
+    # parser.add_argument('--valid_spart', type=int, default=22000)
+    parser.add_argument('--valid_spart', type=int, default=valid_default_spart)
+    parser.add_argument('--early_stop', type=int, default=-1)
     FLAGS = parser.parse_args()
 
     if FLAGS.model_path:
@@ -65,5 +66,5 @@ if __name__ == "__main__":
         train_model_merge_2(model, FLAGS, False)
         validate_model_merge_2(model, FLAGS)
         train_model_merge_2(model, FLAGS, True, valdat_from='spart_valid')
-    validate_model_merge_2(model, FLAGS, valdat_from='spart_valid')
+    # validate_model_merge_2(model, FLAGS, valdat_from='spart_valid')
     predict_result_merge_2(model, FLAGS)

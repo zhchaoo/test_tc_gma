@@ -317,7 +317,7 @@ def train_data_generator_merge_2(FLAGS):
     # simple classification example
     # Training part
     n_samples = FLAGS.train_spart
-    n_samples_v = s1_validation.shape[0]
+    n_samples_v = FLAGS.valid_spart
     train_y = np.argmax(label_training, axis=1)
     j = 0
     batch_size_V = int(FLAGS.batch_size / FLAGS.vt_rate)
@@ -397,7 +397,7 @@ def train_model_merge_2(model, FLAGS, only_valid=False, valdat_from='spart_train
         n_samples = FLAGS.train_spart
         steps_per_epoch = n_samples / FLAGS.batch_size if FLAGS.steps is None else FLAGS.steps
     early_stopping_callback = EarlyStopping(monitor='val_acc', patience=FLAGS.early_stop)
-    ckpt_path = 'model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5' % (FLAGS.type, date_time_str),
+    ckpt_path = 'model' + os.path.sep + 'ckpt' + os.path.sep + '%s_%s.h5' % (FLAGS.type, date_time_str)
     checkpoint_callback = ModelCheckpoint(ckpt_path,
                                           monitor='val_acc', verbose=1, save_best_only=FLAGS.early_stop >= 0)
     if FLAGS.early_stop >= 0:
@@ -415,7 +415,7 @@ def train_model_merge_2(model, FLAGS, only_valid=False, valdat_from='spart_train
     return model
 
 
-def validate_model_merge_2(model, FLAGS, valdat_from='train_spart'):
+def validate_model_merge_2(model, FLAGS, valdat_from='spart_train'):
     # make a prediction on validation
     # val_loss, val_acc = model.evaluate(val_X_batch, val_y)
     # logging.info "loss:%f accuracy:%f" % (val_loss, val_acc)
