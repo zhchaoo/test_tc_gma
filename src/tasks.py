@@ -117,6 +117,10 @@ class ThreadSafeIter():
         with self.lock:
             return self.it.__next__()
 
+    def next(self):
+        with self.lock:
+            return self.it.next()
+
 
 def threadsafe_generator(f):
     """A decorator that takes a generator function and makes it thread-safe.
