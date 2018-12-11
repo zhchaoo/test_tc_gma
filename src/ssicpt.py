@@ -4,7 +4,7 @@
 import argparse
 
 from tasks import *
-from keras import regularizers
+from keras import regularizers, optimizers
 from keras.layers import Conv2D, MaxPooling2D, AveragePooling2D
 from keras.layers import Flatten, Dense, Dropout, BatchNormalization
 from keras.layers import Input, concatenate
@@ -12,13 +12,13 @@ from keras.models import Model
 
 # Global Constants
 NB_CLASS = 17
-LEARNING_RATE = 0.01
+LEARNING_RATE = 1e-4
 MOMENTUM = 0.9
 ALPHA = 0.0001
 BETA = 0.75
 GAMMA = 0.1
-DROPOUT = 0.4
-WEIGHT_DECAY = 0.0005
+DROPOUT = 0.2
+WEIGHT_DECAY = 0.005
 LRN2D_NORM = True
 DATA_FORMAT = 'channels_last'  # Theano:'channels_first' Tensorflow:'channels_last'
 CONCAT_AXIS = 3
@@ -110,6 +110,7 @@ def inception_net(img_input, base_kn = 10.67):
     x = inception_module(x, params=[(int(base_kn * 6),), (int(base_kn * 9), int(base_kn * 12)), (int(base_kn * 3),)], concat_axis=CONCAT_AXIS)  # 3a
     x = inception_module(x, params=[(int(base_kn * 12),), (int(base_kn * 12), int(base_kn * 18)), (int(base_kn * 6),)], concat_axis=CONCAT_AXIS)  # 3b
     x = MaxPooling2D(pool_size=(2, 2), strides=2, padding='same', data_format=DATA_FORMAT)(x)
+    x = Dropout(DROPOUT)(x)
 
     x = inception_module(x, params=[(int(base_kn * 18),), (int(base_kn * 9), int(base_kn * 19.5)), (int(base_kn * 6),)], concat_axis=CONCAT_AXIS)  # 4a
     x = inception_module(x, params=[(int(base_kn * 12),), (int(base_kn * 12), int(base_kn * 24)), (int(base_kn * 6),)], concat_axis=CONCAT_AXIS)  # 4c
@@ -141,7 +142,7 @@ def create_model():
     # Save a PNG of the Model Build
     # plot_model(model,to_file='GoogLeNet.png')
 
-    model.compile(optimizer='adam',
+    model.compile(optimizer=optimizers.Adam(label_training=LEARNING_RATE),
                   loss='sparse_categorical_crossentropy',
                   metrics=['accuracy'])
     print('Model Compiled')
